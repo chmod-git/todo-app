@@ -18,6 +18,10 @@ func NewAuthService(repo repository.Authorization) *AuthService {
 }
 
 func (s *AuthService) CreateUser(user todo.User) (int, error) {
+	if user.Password == "" {
+		return 0, fmt.Errorf("password cannot be empty")
+	}
+
 	user.Password = s.generatePasswordHash(user.Password)
 	return s.repo.CreateUser(user)
 }
