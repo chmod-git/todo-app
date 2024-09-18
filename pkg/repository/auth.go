@@ -15,6 +15,13 @@ func NewAuthSQL(db *sqlx.DB) *AuthSQL {
 }
 
 func (s *AuthSQL) CreateUser(user todo.User) (int, error) {
+	if user.Name == "" {
+		return 0, fmt.Errorf("name cannot be empty")
+	}
+	if user.Username == "" {
+		return 0, fmt.Errorf("username cannot be empty")
+	}
+
 	var id int
 	query := fmt.Sprintf("INSERT INTO %s (name, username, password_hash) VALUES ($1, $2, $3) RETURNING id", usersTable)
 
