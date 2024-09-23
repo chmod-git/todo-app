@@ -1,16 +1,31 @@
 package todo
 
+import "fmt"
+
 type TodoList struct {
-	Id          int    `json:"id"`
-	UserId      int    `json:"user_id"`
-	Title       string `json:"title"`
-	Description string `json:"description"`
+	Id          int    `json:"id" db:"id"`
+	UserId      int    `json:"-" db:"user_id"`
+	Title       string `json:"title" db:"title"`
+	Description string `json:"description" db:"description"`
 }
 
 type TodoItem struct {
-	Id          int    `json:"id"`
-	ListId      int    `json:"list_id"`
-	Title       string `json:"title"`
-	Description string `json:"description"`
-	Done        bool   `json:"done"`
+	Id          int    `json:"id" db:"id"`
+	ListId      int    `json:"-" db:"list_id"`
+	Title       string `json:"title" db:"title"`
+	Description string `json:"description" db:"description"`
+	Done        bool   `json:"done" db:"done"`
+}
+
+type UpdateListInput struct {
+	Title       *string `json:"title"`
+	Description *string `json:"description"`
+}
+
+func (i *UpdateListInput) Validate() error {
+	if i.Description == nil && i.Title == nil {
+		return fmt.Errorf("update structure has no values")
+	}
+
+	return nil
 }
