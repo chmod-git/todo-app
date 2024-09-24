@@ -14,21 +14,25 @@ func NewTodoListService(repo repository.TodoList) *TodoListService {
 }
 
 func (s *TodoListService) CreateList(userId int, list todo.TodoList) (int, error) {
-	return 0, nil
+	return s.repo.Create(userId, list)
 }
 
 func (s *TodoListService) GetAllLists(userId int) ([]todo.TodoList, error) {
-	return []todo.TodoList{}, nil
+	return s.repo.GetAll(userId)
 }
 
 func (s *TodoListService) GetListById(userId, listId int) (todo.TodoList, error) {
-	return todo.TodoList{}, nil
+	return s.repo.GetById(userId, listId)
 }
 
-func (s *TodoListService) UpdateListById(userId, listId int, list todo.UpdateListInput) error {
-	return nil
+func (s *TodoListService) UpdateListById(userId, listId int, input todo.UpdateListInput) error {
+	if err := input.Validate(); err != nil {
+		return err
+	}
+
+	return s.repo.Update(userId, listId, input)
 }
 
 func (s *TodoListService) DeleteListById(userId, listId int) error {
-	return nil
+	return s.repo.Delete(userId, listId)
 }
