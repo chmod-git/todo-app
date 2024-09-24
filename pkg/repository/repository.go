@@ -30,5 +30,6 @@ type Repository struct {
 func NewRepository(db *sqlx.DB) *Repository {
 	return &Repository{
 		Authorization: NewAuthSQL(db),
+		TodoList:      NewListSQL(db),
 	}
 }

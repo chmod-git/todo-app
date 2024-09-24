@@ -22,15 +22,15 @@ func (s *AuthSQL) CreateUser(user todo.User) (int, error) {
 		return 0, fmt.Errorf("username cannot be empty")
 	}
 
-	var id int
+	var userId int
 	query := fmt.Sprintf("INSERT INTO %s (name, username, password_hash) VALUES ($1, $2, $3) RETURNING id", usersTable)
 
-	row := s.db.QueryRow(query, user.Name, user.Username, user.Password)
-	if err := row.Scan(&id); err != nil {
+	err := s.db.Get(&userId, query, user.Name, user.Username, user.Password)
+	if err != nil {
 		return 0, err
 	}
 
-	return id, nil
+	return userId, nil
 }
 
 func (r *AuthSQL) GetUser(username, password string) (todo.User, error) {
