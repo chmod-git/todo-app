@@ -31,7 +31,7 @@ func (h *Handler) createList(c *gin.Context) {
 	})
 }
 
-type GetAllResponse struct {
+type GetAllListsResponse struct {
 	Data []todo.TodoList `json:"data"`
 }
 
@@ -48,7 +48,7 @@ func (h *Handler) getAllLists(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, GetAllResponse{
+	c.JSON(http.StatusOK, GetAllListsResponse{
 		Data: lists,
 	})
 }
