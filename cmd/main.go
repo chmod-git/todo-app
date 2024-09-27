@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"github.com/chmod-git/todo-app"
 	"github.com/chmod-git/todo-app/pkg/handler"
 	"github.com/chmod-git/todo-app/pkg/repository"
@@ -10,6 +11,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 	"os"
+	"os/signal"
 )
 
 func main() {
@@ -42,8 +44,26 @@ func main() {
 
 	server := new(todo.Server)
 
-	if err := server.Run(viper.GetString("port"), handlers.InitRoutes()); err != nil {
-		logrus.Fatalf("error occured while running the server: %v", err)
+	go func() {
+		if err := server.Run(viper.GetString("port"), handlers.InitRoutes()); err != nil {
+			logrus.Fatalf("error occured while running the server: %v", err)
+		}
+	}()
+
+	logrus.Print("Todo-App Started")
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, os.Interrupt, os.Kill)
+	<-quit
+
+	logrus.Print("Todo-App Finished")
+
+	if err = server.Shutdown(context.Background()); err != nil {
+		logrus.Fatalf("error occured while shutting down the server: %v", err)
+	}
+
+	if err = db.Close(); err != nil {
+		logrus.Fatalf("error occured while closing the database: %v", err)
 	}
 }
 
