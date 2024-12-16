@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/chmod-git/todo-app"
 	"github.com/chmod-git/todo-app/pkg/handler"
+	"github.com/chmod-git/todo-app/pkg/long_polling"
 	"github.com/chmod-git/todo-app/pkg/repository"
 	"github.com/chmod-git/todo-app/pkg/service"
 	"github.com/joho/godotenv"
@@ -25,20 +26,20 @@ func main() {
 		logrus.Fatalf("Error loading .env file: %v", err.Error())
 	}
 
-	db, err := repository.NewPostgresDB(repository.Config{
-		Host:     viper.GetString("db.host"),
-		Port:     viper.GetString("db.port"),
-		Username: viper.GetString("db.username"),
+	postgres, err := repository.NewPostgresDB(repository.PostgresConfig{
+		Host:     viper.GetString("postgres.host"),
+		Port:     viper.GetString("postgres.port"),
+		Username: viper.GetString("postgres.username"),
 		Password: os.Getenv("DB_PASSWORD"),
-		DBName:   viper.GetString("db.dbname"),
-		SSLMode:  viper.GetString("db.sslmode"),
+		DBName:   viper.GetString("postgres.dbname"),
+		SSLMode:  viper.GetString("postgres.sslmode"),
 	})
 
 	if err != nil {
 		logrus.Fatalf("error initializing DB: %v", err.Error())
 	}
 
-	repos := repository.NewRepository(db)
+	repos := repository.NewRepository(postgres)
 	services := service.NewService(repos)
 	handlers := handler.NewHandler(services)
 
@@ -52,6 +53,8 @@ func main() {
 
 	logrus.Print("Todo-App Started")
 
+	go long_polling.LaunchBot()
+
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt, os.Kill)
 	<-quit
@@ -62,7 +65,7 @@ func main() {
 		logrus.Fatalf("error occured while shutting down the server: %v", err)
 	}
 
-	if err = db.Close(); err != nil {
+	if err = postgres.Close(); err != nil {
 		logrus.Fatalf("error occured while closing the database: %v", err)
 	}
 }
