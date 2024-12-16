@@ -1,8 +1,15 @@
 port: "8000"
 
-db:
+postgres:
   host: "localhost"
   port: "5436"
   username: "m_boiko"
   dbname: "todo-app"
   sslmode: "disable"
+
+redis:
+  host: "localhost"
+  port: "6379"
+  password: "m_boiko"
+  db: "0"
+  ttl: "3600"
