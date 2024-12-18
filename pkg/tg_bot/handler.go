@@ -1,6 +1,7 @@
 package tg_bot
 
 import (
+	"fmt"
 	"github.com/chmod-git/todo-app"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/sirupsen/logrus"
@@ -71,8 +72,12 @@ func LaunchBot() {
 					HandleEditAccountMessage(bot, update, session)
 				case "add_task_title", "add_task_description":
 					HandleAddTaskMessage(bot, update, session)
+				case "add_list_title", "add_list_description":
+					HandleAddListMessage(bot, update, session)
 				case "edit_task_title", "edit_task_description":
 					HandleUpdateTaskMessage(bot, update, session)
+				case "edit_list_title", "edit_list_description":
+					HandleManageListInfoMessage(bot, update, session)
 				}
 			}
 		}(update)
@@ -220,8 +225,41 @@ func HandleCallback(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	case "edit_task_status_no":
 		session.Status = "edit_task_status"
 		HandleUpdateTaskMessage(bot, update, session)
+	case "edit_list_title_yes":
+		SendMessage(bot, chatID, "Enter new title:")
+		session.Status = "edit_list_title"
+	case "edit_list_title_no":
+		SendYesNoQuestion(bot, chatID, "Change description:", "edit_list_description_yes", "edit_list_description_no")
+	case "edit_list_description_yes":
+		SendMessage(bot, chatID, "Enter new description:")
+		session.Status = "edit_list_description"
+	case "edit_list_description_no":
+		httpClient := NewHTTPClient("http://localhost:8000")
+		headers := map[string]string{
+			"Authorization": "Bearer " + session.UserToken,
+		}
+
+		input := todo.UpdateListInput{
+			Title:       &session.ListData.Title,
+			Description: &session.ListData.Description,
+		}
+
+		response, statusCode, err := httpClient.PUT(fmt.Sprintf("/api/lists/%s", session.CurrentListID), headers, input)
+		if err != nil {
+			logrus.Errorf("Failed to update list: %v", err)
+			SendMessage(bot, chatID, "Failed to update list. Please try again.")
+			return
+		} else if statusCode != 200 {
+			logrus.Errorf("Failed to update list: %v", string(response))
+			SendMessage(bot, chatID, "An error occurred while updating the list.")
+			return
+		}
+
+		SendMessage(bot, chatID, "List successfully updated!")
+		session.TaskData = todo.TodoItem{}
+		session.Status = ""
 	case "add_list":
-		AddList(bot, update)
+		AddList(bot, chatID, session)
 	default:
 		if callbackData := strings.Split(update.CallbackQuery.Data, "|"); len(callbackData) == 2 {
 			action := callbackData[0]
@@ -230,10 +268,10 @@ func HandleCallback(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 			switch action {
 			case "edit_tasks":
 				EditListTasks(bot, chatID, id, session)
-			//case "manage_info":
-			//	ManageListInfo(bot, chatID, id)
-			//case "delete_list":
-			//	DeleteList(bot, chatID, id)
+			case "manage_info":
+				ManageListInfo(bot, chatID, id, session)
+			case "delete_list":
+				DeleteList(bot, chatID, id, session)
 			case "add_task", "update_task", "delete_task":
 				session.CurrentListID = id
 				HandleTaskAction(bot, chatID, session, action, id)
