@@ -3,10 +3,7 @@ package tg_bot
 import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/sirupsen/logrus"
-	"sync"
 )
-
-var mu sync.Mutex
 
 func Auth(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	signUpButton := tgbotapi.NewInlineKeyboardButtonData("Sign-Up", "sign_up")
@@ -24,21 +21,25 @@ func Auth(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 func SignIn(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	chatID := update.CallbackQuery.Message.Chat.ID
 
+	session := getSession(chatID)
+
+	session.AccountData = []string{""}
+	session.Status = "sign_in"
+
 	sendMessage(bot, chatID, "Logging into existing account...")
 	sendMessage(bot, chatID, "Enter your username:")
-	mu.Lock()
-	accountData[chatID] = []string{""}
-	mu.Unlock()
 }
 
 func SignUp(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	chatID := update.CallbackQuery.Message.Chat.ID
 
+	session := getSession(chatID)
+
+	session.AccountData = []string{}
+	session.Status = "sign_up"
+
 	sendMessage(bot, chatID, "Creating new account...")
 	sendMessage(bot, chatID, "Create your name:")
-	mu.Lock()
-	accountData[chatID] = []string{}
-	mu.Unlock()
 }
 
 func sendMessage(bot *tgbotapi.BotAPI, chatID int64, text string) {

@@ -9,16 +9,29 @@ import (
 	"os"
 )
 
-var messageStatus string
-var chatID int64
-var userInfo todo.User
-var userToken string
-var accountData = make(map[int64][]string)
+type UserSession struct {
+	UserInfo    todo.User
+	UserToken   string
+	AccountData []string
+	Status      string
+}
+
+func getSession(chatID int64) *UserSession {
+	if _, exists := userSessions[chatID]; !exists {
+		userSessions[chatID] = &UserSession{
+			AccountData: []string{},
+			Status:      "",
+		}
+	}
+	return userSessions[chatID]
+}
+
+var userSessions = make(map[int64]*UserSession)
 
 func LaunchBot() {
 	bot, err := tgbotapi.NewBotAPI(os.Getenv("BOT_TOKEN"))
 	if err != nil {
-		logrus.Fatalf("error occured while creating the bot: %v", err)
+		logrus.Fatalf("Error occurred while creating the bot: %v", err)
 	}
 
 	bot.Debug = false
@@ -29,25 +42,45 @@ func LaunchBot() {
 	updates := bot.GetUpdatesChan(u)
 
 	for update := range updates {
-		if update.Message != nil && update.Message.IsCommand() {
-			handleCommand(bot, update)
-		}
-
-		if update.CallbackQuery != nil {
-			handleCallback(bot, update)
-		}
-
-		if update.Message != nil && !update.Message.IsCommand() {
-			switch messageStatus {
-			case "sign_in":
-				handleSignInMessage(bot, update)
-			case "sign_up":
-				handleSignUpMessage(bot, update)
-			case "edit_name", "edit_username", "edit_password":
-				handleEditAccountMessage(bot, update)
+		go func(update tgbotapi.Update) {
+			chatID := getChatID(update)
+			if chatID == 0 {
+				logrus.Warn("Could not determine chat ID")
+				return
 			}
-		}
+
+			session := getSession(chatID)
+
+			if update.Message != nil && update.Message.IsCommand() {
+				handleCommand(bot, update)
+			}
+
+			if update.CallbackQuery != nil {
+				handleCallback(bot, update)
+			}
+
+			if update.Message != nil && !update.Message.IsCommand() {
+				switch session.Status {
+				case "sign_in":
+					handleSignInMessage(bot, update, session)
+				case "sign_up":
+					handleSignUpMessage(bot, update, session)
+				case "edit_name", "edit_username", "edit_password":
+					handleEditAccountMessage(bot, update, session)
+				}
+			}
+		}(update)
 	}
+}
+
+func getChatID(update tgbotapi.Update) int64 {
+	if update.Message != nil {
+		return update.Message.Chat.ID
+	}
+	if update.CallbackQuery != nil && update.CallbackQuery.Message != nil {
+		return update.CallbackQuery.Message.Chat.ID
+	}
+	return 0
 }
 
 func handleCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
@@ -55,71 +88,76 @@ func handleCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	case "start":
 		sendMessage(bot, update.Message.Chat.ID, "Hi! I'm bot created to help you manage your tasks")
 		Auth(bot, update)
+	case "auth":
+		Auth(bot, update)
 	case "account":
 		Account(bot, update)
 	case "help":
-		sendMessage(bot, chatID, "Use these commands:\n /account - to manage your account\n /lists - to manage your todo-lists and tasks")
+		sendMessage(bot, update.Message.Chat.ID, "Use these commands:\n /auth - to authorize\n /account - to manage your account\n /lists - to manage your todo-lists and tasks")
 	default:
 		sendMessage(bot, update.Message.Chat.ID, "Unknown command. Enter /help to see all available commands.")
 	}
 }
 
 func handleCallback(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
+	chatID := getChatID(update)
+	session := getSession(chatID)
+
 	switch update.CallbackQuery.Data {
 	case "sign_in":
 		SignIn(bot, update)
-		messageStatus = "sign_in"
+		session.Status = "sign_in"
 	case "sign_up":
 		SignUp(bot, update)
-		messageStatus = "sign_up"
+		session.Status = "sign_up"
 	case "edit_acc":
 		EditAcc(bot, update)
 	case "edit_name_yes":
 		sendMessage(bot, chatID, "Enter new name:")
-		messageStatus = "edit_name"
+		session.Status = "edit_name"
 	case "edit_name_no":
-		accountData[chatID] = append(accountData[chatID], userInfo.Name)
+		session.AccountData = append(session.AccountData, session.UserInfo.Name)
 		sendYesNoQuestion(bot, chatID, "Change your username:", "edit_username_yes", "edit_username_no")
 	case "edit_username_yes":
 		sendMessage(bot, chatID, "Enter new username:")
-		messageStatus = "edit_username"
+		session.Status = "edit_username"
 	case "edit_username_no":
-		accountData[chatID] = append(accountData[chatID], userInfo.Username)
+		session.AccountData = append(session.AccountData, session.UserInfo.Username)
 		sendYesNoQuestion(bot, chatID, "Change your password:", "edit_password_yes", "edit_password_no")
 	case "edit_password_yes":
 		sendMessage(bot, chatID, "Enter new password:")
-		messageStatus = "edit_password"
+		session.Status = "edit_password"
 	case "edit_password_no":
-		accountData[chatID] = append(accountData[chatID], userInfo.Password)
-		messageStatus = ""
+		session.AccountData = append(session.AccountData, session.UserInfo.Password)
+		session.Status = ""
 
 		httpClient := NewHTTPClient("http://localhost:8000")
 
 		headers := map[string]string{
-			"Authorization": "Bearer " + userToken,
+			"Authorization": "Bearer " + session.UserToken,
 		}
 		input := todo.User{
-			Name:     accountData[chatID][0],
-			Username: accountData[chatID][1],
-			Password: accountData[chatID][2],
+			Name:     session.AccountData[0],
+			Username: session.AccountData[1],
+			Password: session.AccountData[2],
 		}
 
 		response, statusCode, err := httpClient.PUT("/auth/api/update", headers, input)
 		if err != nil {
 			logrus.Errorf("Failed to update: %v", err)
 			sendMessage(bot, chatID, "This username is already taken. Try again.")
-			accountData[chatID] = accountData[chatID][:1]
-			messageStatus = "edit_username"
+			session.AccountData = session.AccountData[:1]
+			session.Status = "edit_username"
 			return
 		} else if statusCode != 200 {
 			logrus.Errorf("Failed to update: %v", string(response))
 			sendMessage(bot, chatID, "Unknown error. Try again.")
-			accountData[chatID] = accountData[chatID][:1]
-			messageStatus = "edit_username"
+			session.AccountData = session.AccountData[:1]
+			session.Status = "edit_username"
 			return
 		}
 
-		userInfo = input
+		session.UserInfo = input
 		sendMessage(bot, chatID, "Account was successfully updated.")
 	case "delete_acc":
 		DeleteAcc(bot, update)
@@ -127,7 +165,7 @@ func handleCallback(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 		httpClient := NewHTTPClient("http://localhost:8000")
 
 		headers := map[string]string{
-			"Authorization": "Bearer " + userToken,
+			"Authorization": "Bearer " + session.UserToken,
 		}
 
 		response, statusCode, err := httpClient.DELETE("/auth/api/delete", headers)
@@ -142,9 +180,9 @@ func handleCallback(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 		}
 
 		sendMessage(bot, chatID, "Account was deleted successfully.")
-		userToken = ""
-		userInfo = todo.User{}
-		delete(accountData, chatID)
+		session.UserToken = ""
+		session.UserInfo = todo.User{}
+		delete(userSessions, chatID)
 	case "delete_acc_no":
 		sendMessage(bot, chatID, "Operation was canceled.")
 	case "log_out":
@@ -152,30 +190,22 @@ func handleCallback(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	}
 }
 
-func handleSignInMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
-	chatID = update.Message.Chat.ID
+func handleSignInMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, session *UserSession) {
+	chatID := getChatID(update)
 	text := update.Message.Text
 
-	mu.Lock()
-	defer mu.Unlock()
-
-	if _, exists := accountData[chatID]; !exists {
-		return
-	}
-
-	switch len(accountData[chatID]) {
+	switch len(session.AccountData) {
 	case 1:
-		accountData[chatID] = append(accountData[chatID], text)
+		session.AccountData = append(session.AccountData, text)
 		sendMessage(bot, chatID, "Enter your password:")
 	case 2:
-		accountData[chatID] = append(accountData[chatID], text)
-		logrus.Infof("User %d input: Username: %s, Password: %s",
-			chatID, accountData[chatID][1], accountData[chatID][2])
+		session.AccountData = append(session.AccountData, text)
+		logrus.Infof("User input: Username: %s, Password: %s", session.AccountData[1], session.AccountData[2])
 
 		httpClient := NewHTTPClient("http://localhost:8000")
 		input := my_lib.SignInInput{
-			Username: accountData[chatID][1],
-			Password: accountData[chatID][2],
+			Username: session.AccountData[1],
+			Password: session.AccountData[2],
 		}
 
 		response, statusCode, err := httpClient.POST("/auth/sign-in", nil, input)
@@ -197,19 +227,19 @@ func handleSignInMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 			logrus.Errorf("Failed to unmarshal response: %v", err)
 		}
 
-		userToken = signInResponse.Token
+		session.UserToken = signInResponse.Token
 
 		headers := map[string]string{
-			"Authorization": "Bearer " + userToken,
+			"Authorization": "Bearer " + session.UserToken,
 		}
 		response, _, _ = httpClient.POST("/auth/api/info", headers, input)
 		var user todo.User
 		err = json.Unmarshal(response, &user)
-		accountData[chatID][0] = user.Name
-		userInfo = todo.User{
-			Name:     accountData[chatID][0],
-			Username: accountData[chatID][1],
-			Password: accountData[chatID][2],
+		session.AccountData[0] = user.Name
+		session.UserInfo = todo.User{
+			Name:     session.AccountData[0],
+			Username: session.AccountData[1],
+			Password: session.AccountData[2],
 		}
 
 		sendMessage(bot, chatID, "Authorization successful.")
@@ -219,34 +249,27 @@ func handleSignInMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	}
 }
 
-func handleSignUpMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
-	chatID = update.Message.Chat.ID
+func handleSignUpMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, session *UserSession) {
+	chatID := getChatID(update)
 	text := update.Message.Text
 
-	mu.Lock()
-	defer mu.Unlock()
-
-	if _, exists := accountData[chatID]; !exists {
-		return
-	}
-
-	switch len(accountData[chatID]) {
+	switch len(session.AccountData) {
 	case 0:
-		accountData[chatID] = append(accountData[chatID], text)
+		session.AccountData = append(session.AccountData, text)
 		sendMessage(bot, chatID, "Create your username:")
 	case 1:
-		accountData[chatID] = append(accountData[chatID], text)
+		session.AccountData = append(session.AccountData, text)
 		sendMessage(bot, chatID, "Create your password:")
 	case 2:
-		accountData[chatID] = append(accountData[chatID], text)
+		session.AccountData = append(session.AccountData, text)
 		logrus.Infof("User %d input: Name: %s, Username: %s, Password: %s",
-			chatID, accountData[chatID][0], accountData[chatID][1], accountData[chatID][2])
+			chatID, session.AccountData[0], session.AccountData[1], session.AccountData[2])
 
 		httpClient := NewHTTPClient("http://localhost:8000")
 		input := todo.User{
-			Name:     accountData[chatID][0],
-			Username: accountData[chatID][1],
-			Password: accountData[chatID][2],
+			Name:     session.AccountData[0],
+			Username: session.AccountData[1],
+			Password: session.AccountData[2],
 		}
 
 		response, statusCode, err := httpClient.POST("/auth/sign-up", nil, input)
@@ -265,19 +288,19 @@ func handleSignUpMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 		sendMessage(bot, chatID, "New account was successfully created.")
 
 		signInInput := my_lib.SignInInput{
-			Username: accountData[chatID][1],
-			Password: accountData[chatID][2],
+			Username: session.AccountData[1],
+			Password: session.AccountData[2],
 		}
 
 		response, _, _ = httpClient.POST("/auth/sign-in", nil, signInInput)
 		var signInResponse AuthResponse
 		json.Unmarshal(response, &signInResponse)
 
-		userToken = signInResponse.Token
-		userInfo = todo.User{
-			Name:     accountData[chatID][0],
-			Username: accountData[chatID][1],
-			Password: accountData[chatID][2],
+		session.UserToken = signInResponse.Token
+		session.UserInfo = todo.User{
+			Name:     session.AccountData[0],
+			Username: session.AccountData[1],
+			Password: session.AccountData[2],
 		}
 
 		sendMessage(bot, chatID, "Use these commands:\n /account - to manage your account\n /lists - to manage your todo-lists and tasks")
@@ -286,57 +309,50 @@ func handleSignUpMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	}
 }
 
-func handleEditAccountMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
-	chatID = update.Message.Chat.ID
+func handleEditAccountMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, session *UserSession) {
+	chatID := getChatID(update)
 	text := update.Message.Text
 
-	mux.Lock()
-	defer mux.Unlock()
-
-	if _, exists := accountData[chatID]; !exists {
-		return
-	}
-
-	switch messageStatus {
+	switch session.Status {
 	case "edit_name":
-		accountData[chatID] = append(accountData[chatID], text)
-		messageStatus = "edit_username"
+		session.AccountData = append(session.AccountData, text)
+		session.Status = "edit_username"
 		sendYesNoQuestion(bot, update.Message.Chat.ID, "Change your username:", "edit_username_yes", "edit_username_no")
 	case "edit_username":
-		accountData[chatID] = append(accountData[chatID], text)
-		messageStatus = "edit_password"
+		session.AccountData = append(session.AccountData, text)
+		session.Status = "edit_password"
 		sendYesNoQuestion(bot, update.Message.Chat.ID, "Change your password:", "edit_password_yes", "edit_password_no")
 	case "edit_password":
-		accountData[chatID] = append(accountData[chatID], text)
-		messageStatus = ""
+		session.AccountData = append(session.AccountData, text)
+		session.Status = ""
 
 		httpClient := NewHTTPClient("http://localhost:8000")
 
 		headers := map[string]string{
-			"Authorization": "Bearer " + userToken,
+			"Authorization": "Bearer " + session.UserToken,
 		}
 		input := todo.User{
-			Name:     accountData[chatID][0],
-			Username: accountData[chatID][1],
-			Password: accountData[chatID][2],
+			Name:     session.AccountData[0],
+			Username: session.AccountData[1],
+			Password: session.AccountData[2],
 		}
 
 		response, statusCode, err := httpClient.PUT("/auth/api/update", headers, input)
 		if err != nil {
 			logrus.Errorf("Failed to update: %v", err)
 			sendMessage(bot, chatID, "This username is already taken. Try again.")
-			accountData[chatID] = accountData[chatID][:1]
-			messageStatus = "edit_username"
+			session.AccountData = session.AccountData[:1]
+			session.Status = "edit_username"
 			return
 		} else if statusCode != 200 {
 			logrus.Errorf("Failed to update: %v", string(response))
 			sendMessage(bot, chatID, "Unknown error. Try again.")
-			accountData[chatID] = accountData[chatID][:1]
-			messageStatus = "edit_username"
+			session.AccountData = session.AccountData[:1]
+			session.Status = "edit_username"
 			return
 		}
 
-		userInfo = input
+		session.UserInfo = input
 		sendMessage(bot, chatID, "Account was successfully updated.")
 	default:
 		sendMessage(bot, chatID, "Unknown operation.")
