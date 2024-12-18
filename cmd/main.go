@@ -4,9 +4,9 @@ import (
 	"context"
 	"github.com/chmod-git/todo-app"
 	"github.com/chmod-git/todo-app/pkg/handler"
-	"github.com/chmod-git/todo-app/pkg/long_polling"
 	"github.com/chmod-git/todo-app/pkg/repository"
 	"github.com/chmod-git/todo-app/pkg/service"
+	"github.com/chmod-git/todo-app/pkg/tg_bot"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 	"github.com/sirupsen/logrus"
@@ -53,7 +53,7 @@ func main() {
 
 	logrus.Print("Todo-App Started")
 
-	go long_polling.LaunchBot()
+	go tg_bot.LaunchBot()
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt, os.Kill)

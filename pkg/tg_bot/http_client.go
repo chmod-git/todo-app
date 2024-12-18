@@ -1,4 +1,4 @@
-package long_polling
+package tg_bot
 
 import (
 	"bytes"

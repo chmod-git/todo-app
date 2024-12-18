@@ -79,3 +79,29 @@ func (s *AuthService) ParseToken(token string) (int, error) {
 
 	return claims.UserId, nil
 }
+
+func (s *AuthService) GetUser(username, password string) (todo.User, error) {
+	if username == "" {
+		return todo.User{}, fmt.Errorf("username cannot be empty")
+	} else if password == "" {
+		return todo.User{}, fmt.Errorf("password cannot be empty")
+	}
+
+	password = generatePasswordHash(password)
+	return s.repo.GetUser(username, password)
+}
+
+func (s *AuthService) UpdateUser(userId int, user todo.User) error {
+	if user.Username == "" {
+		return fmt.Errorf("username cannot be empty")
+	} else if user.Password == "" {
+		return fmt.Errorf("password cannot be empty")
+	}
+
+	user.Password = generatePasswordHash(user.Password)
+	return s.repo.UpdateUser(userId, user)
+}
+
+func (s *AuthService) DeleteUser(userId int) error {
+	return s.repo.DeleteUser(userId)
+}
