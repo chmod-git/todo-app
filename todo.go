@@ -4,14 +4,14 @@ import "fmt"
 
 type TodoList struct {
 	Id          int    `json:"id" db:"id"`
-	UserId      int    `json:"-" db:"user_id"`
+	UserId      int    `json:"user_id" db:"user_id"`
 	Title       string `json:"title" db:"title"`
 	Description string `json:"description" db:"description"`
 }
 
 type TodoItem struct {
 	Id          int    `json:"id" db:"id"`
-	ListId      int    `json:"-" db:"list_id"`
+	ListId      int    `json:"list_id" db:"list_id"`
 	Title       string `json:"title" db:"title"`
 	Description string `json:"description" db:"description"`
 	Done        bool   `json:"done" db:"done"`
