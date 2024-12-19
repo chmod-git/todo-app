@@ -160,13 +160,15 @@ func (r *RedisRepository) DeleteListData(chatID string, targetList todo.TodoList
 	return nil
 }
 
-func (r *RedisRepository) SaveItemsData(chatID string, data []todo.TodoItem, ttlSeconds int) error {
+func (r *RedisRepository) SaveItemsData(chatID, listID string, data []todo.TodoItem, ttlSeconds int) error {
+	key := fmt.Sprintf("chat:%s:list:%s", chatID, listID)
+
 	jsonData, err := json.Marshal(data)
 	if err != nil {
 		return fmt.Errorf("failed to marshal item data: %v", err)
 	}
 
-	err = r.itemClient.Set(ctx, "chat:"+chatID, jsonData, time.Duration(ttlSeconds)*time.Second).Err()
+	err = r.itemClient.Set(ctx, key, jsonData, time.Duration(ttlSeconds)*time.Second).Err()
 	if err != nil {
 		return fmt.Errorf("failed to save item data to Redis: %v", err)
 	}
@@ -174,10 +176,12 @@ func (r *RedisRepository) SaveItemsData(chatID string, data []todo.TodoItem, ttl
 	return nil
 }
 
-func (r *RedisRepository) GetItemsData(chatID string) ([]todo.TodoItem, error) {
-	jsonData, err := r.itemClient.Get(ctx, "chat:"+chatID).Result()
+func (r *RedisRepository) GetItemsData(chatID, listID string) ([]todo.TodoItem, error) {
+	key := fmt.Sprintf("chat:%s:list:%s", chatID, listID)
+
+	jsonData, err := r.itemClient.Get(ctx, key).Result()
 	if err == redis.Nil {
-		return nil, fmt.Errorf("no data found for chat ID: %s", chatID)
+		return nil, fmt.Errorf("no data found for chat ID: %s and list ID: %s", chatID, listID)
 	} else if err != nil {
 		return nil, fmt.Errorf("failed to get item data from Redis: %v", err)
 	}
@@ -185,14 +189,16 @@ func (r *RedisRepository) GetItemsData(chatID string) ([]todo.TodoItem, error) {
 	var data []todo.TodoItem
 	err = json.Unmarshal([]byte(jsonData), &data)
 	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal list data: %v", err)
+		return nil, fmt.Errorf("failed to unmarshal item data: %v", err)
 	}
 
 	return data, nil
 }
 
-func (r *RedisRepository) UpdateItemData(chatID string, updatedItem todo.TodoItem, ttlSeconds int) error {
-	data, err := r.GetItemsData(chatID)
+func (r *RedisRepository) UpdateItemData(chatID, listID string, updatedItem todo.TodoItem, ttlSeconds int) error {
+	key := fmt.Sprintf("chat:%s:list:%s", chatID, listID)
+
+	data, err := r.GetItemsData(chatID, listID)
 	if err != nil {
 		return fmt.Errorf("failed to get item data for update: %v", err)
 	}
@@ -216,7 +222,7 @@ func (r *RedisRepository) UpdateItemData(chatID string, updatedItem todo.TodoIte
 		return fmt.Errorf("failed to marshal updated item data: %v", err)
 	}
 
-	err = r.itemClient.Set(ctx, "chat:"+chatID, jsonData, time.Duration(ttlSeconds)*time.Second).Err()
+	err = r.itemClient.Set(ctx, key, jsonData, time.Duration(ttlSeconds)*time.Second).Err()
 	if err != nil {
 		return fmt.Errorf("failed to save updated item data to Redis: %v", err)
 	}
@@ -224,9 +230,11 @@ func (r *RedisRepository) UpdateItemData(chatID string, updatedItem todo.TodoIte
 	return nil
 }
 
-func (r *RedisRepository) AddItemData(chatID string, newItem todo.TodoItem, ttlSeconds int) error {
-	data, err := r.GetItemsData(chatID)
-	if err != nil {
+func (r *RedisRepository) AddItemData(chatID, listID string, newItem todo.TodoItem, ttlSeconds int) error {
+	key := fmt.Sprintf("chat:%s:list:%s", chatID, listID)
+
+	data, err := r.GetItemsData(chatID, listID)
+	if err != nil && err.Error() != fmt.Sprintf("no data found for chat ID: %s and list ID: %s", chatID, listID) {
 		return fmt.Errorf("failed to get item data for addition: %v", err)
 	}
 
@@ -243,7 +251,7 @@ func (r *RedisRepository) AddItemData(chatID string, newItem todo.TodoItem, ttlS
 		return fmt.Errorf("failed to marshal new item data: %v", err)
 	}
 
-	err = r.itemClient.Set(ctx, "chat:"+chatID, jsonData, time.Duration(ttlSeconds)*time.Second).Err()
+	err = r.itemClient.Set(ctx, key, jsonData, time.Duration(ttlSeconds)*time.Second).Err()
 	if err != nil {
 		return fmt.Errorf("failed to save new item data to Redis: %v", err)
 	}
@@ -251,10 +259,12 @@ func (r *RedisRepository) AddItemData(chatID string, newItem todo.TodoItem, ttlS
 	return nil
 }
 
-func (r *RedisRepository) DeleteItemData(chatID string, targetItem todo.TodoItem, ttlSeconds int) error {
-	data, err := r.GetItemsData(chatID)
+func (r *RedisRepository) DeleteItemData(chatID, listID string, targetItem todo.TodoItem, ttlSeconds int) error {
+	key := fmt.Sprintf("chat:%s:list:%s", chatID, listID)
+
+	data, err := r.GetItemsData(chatID, listID)
 	if err != nil {
-		return fmt.Errorf("failed to get list data for deletion: %v", err)
+		return fmt.Errorf("failed to get item data for deletion: %v", err)
 	}
 
 	var updatedData []todo.TodoItem
@@ -269,7 +279,7 @@ func (r *RedisRepository) DeleteItemData(chatID string, targetItem todo.TodoItem
 		return fmt.Errorf("failed to marshal updated item data: %v", err)
 	}
 
-	err = r.itemClient.Set(ctx, "chat:"+chatID, jsonData, time.Duration(ttlSeconds)*time.Second).Err()
+	err = r.itemClient.Set(ctx, key, jsonData, time.Duration(ttlSeconds)*time.Second).Err()
 	if err != nil {
 		return fmt.Errorf("failed to save updated item data to Redis: %v", err)
 	}
