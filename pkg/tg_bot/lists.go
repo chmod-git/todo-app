@@ -5,16 +5,30 @@ import (
 	"fmt"
 	"github.com/chmod-git/todo-app"
 	"github.com/chmod-git/todo-app/pkg/handler"
+	"github.com/chmod-git/todo-app/pkg/repository"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/sirupsen/logrus"
+	"strconv"
 )
 
-func Lists(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
+type ListService struct {
+	auth  *AuthorizationService
+	redis *repository.RedisRepository
+}
+
+func NewListService(auth *AuthorizationService, redis *repository.RedisRepository) *ListService {
+	return &ListService{
+		auth:  auth,
+		redis: redis,
+	}
+}
+
+func (l *ListService) Lists(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	chatID := update.Message.Chat.ID
 	session := GetSession(chatID)
 
 	if session.UserToken == "" {
-		Auth(bot, update)
+		l.auth.Auth(bot, update)
 		return
 	}
 
@@ -30,8 +44,15 @@ func Lists(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	bot.Send(msg)
 }
 
-func ManageLists(bot *tgbotapi.BotAPI, update tgbotapi.Update, session *UserSession) {
+func (l *ListService) ManageLists(bot *tgbotapi.BotAPI, update tgbotapi.Update, session *UserSession) {
 	chatID := GetChatID(update)
+
+	lists, err := l.redis.GetListsData(strconv.FormatInt(chatID, 10))
+	if err == nil && len(lists) > 0 {
+		sendListsToUser(bot, chatID, lists)
+		return
+	}
+
 	httpClient := NewHTTPClient("http://localhost:8000")
 
 	headers := map[string]string{
@@ -39,13 +60,9 @@ func ManageLists(bot *tgbotapi.BotAPI, update tgbotapi.Update, session *UserSess
 	}
 
 	response, statusCode, err := httpClient.GET("/api/lists", headers)
-	if err != nil {
+	if err != nil || statusCode != 200 {
 		logrus.Errorf("Failed to manage lists: %v", err)
-		SendMessage(bot, chatID, "Failed to retrieve your lists. Please try again.")
-		return
-	} else if statusCode != 200 {
-		logrus.Errorf("Failed to manage lists: %v", string(response))
-		SendMessage(bot, chatID, "An error occurred. Please try again.")
+		SendMessage(bot, chatID, "An error occurred while retrieving your lists. Please try again.")
 		return
 	}
 
@@ -56,13 +73,23 @@ func ManageLists(bot *tgbotapi.BotAPI, update tgbotapi.Update, session *UserSess
 		SendMessage(bot, chatID, "An error occurred while processing your lists.")
 		return
 	}
-	lists := getAllListsResponse.Data
+
+	lists = getAllListsResponse.Data
 
 	if len(lists) == 0 {
 		SendMessage(bot, chatID, "You don't have any lists yet.")
 		return
 	}
 
+	err = l.redis.SaveListsData(strconv.FormatInt(chatID, 10), lists, 900)
+	if err != nil {
+		logrus.Errorf("Failed to save lists to Redis: %v", err)
+	}
+
+	sendListsToUser(bot, chatID, lists)
+}
+
+func sendListsToUser(bot *tgbotapi.BotAPI, chatID int64, lists []todo.TodoList) {
 	var messageText = "Your lists:\n\n"
 	for i, list := range lists {
 		messageText += fmt.Sprintf("%d. %s - %s\n", i+1, list.Title, list.Description)
@@ -83,7 +110,13 @@ func ManageLists(bot *tgbotapi.BotAPI, update tgbotapi.Update, session *UserSess
 	bot.Send(msg)
 }
 
-func PromptListSelection(bot *tgbotapi.BotAPI, chatID int64, session *UserSession, action string) {
+func (l *ListService) PromptListSelection(bot *tgbotapi.BotAPI, chatID int64, session *UserSession, action string) {
+	lists, err := l.redis.GetListsData(strconv.FormatInt(chatID, 10))
+	if err == nil && len(lists) > 0 {
+		sendListsChoiceToUser(bot, chatID, lists, action)
+		return
+	}
+
 	httpClient := NewHTTPClient("http://localhost:8000")
 
 	headers := map[string]string{
@@ -92,8 +125,8 @@ func PromptListSelection(bot *tgbotapi.BotAPI, chatID int64, session *UserSessio
 
 	response, statusCode, err := httpClient.GET("/api/lists", headers)
 	if err != nil || statusCode != 200 {
-		logrus.Errorf("Failed to retrieve lists: %v", err)
-		SendMessage(bot, chatID, "Failed to retrieve lists. Please try again.")
+		logrus.Errorf("Failed to manage lists: %v", err)
+		SendMessage(bot, chatID, "An error occurred while retrieving your lists. Please try again.")
 		return
 	}
 
@@ -105,12 +138,17 @@ func PromptListSelection(bot *tgbotapi.BotAPI, chatID int64, session *UserSessio
 		return
 	}
 
-	lists := getAllListsResponse.Data
+	lists = getAllListsResponse.Data
+
 	if len(lists) == 0 {
 		SendMessage(bot, chatID, "You don't have any lists yet.")
 		return
 	}
 
+	sendListsChoiceToUser(bot, chatID, lists, action)
+}
+
+func sendListsChoiceToUser(bot *tgbotapi.BotAPI, chatID int64, lists []todo.TodoList, action string) {
 	var rows [][]tgbotapi.InlineKeyboardButton
 	for _, list := range lists {
 		button := tgbotapi.NewInlineKeyboardButtonData(list.Title, fmt.Sprintf("%s|%d", action, list.Id))
@@ -121,10 +159,10 @@ func PromptListSelection(bot *tgbotapi.BotAPI, chatID int64, session *UserSessio
 
 	msg := tgbotapi.NewMessage(chatID, "Select a list:")
 	msg.ReplyMarkup = keyboard
-	_, err = bot.Send(msg)
+	bot.Send(msg)
 }
 
-func ManageListInfo(bot *tgbotapi.BotAPI, chatID int64, listID string, session *UserSession) {
+func (l *ListService) ManageListInfo(bot *tgbotapi.BotAPI, chatID int64, listID string, session *UserSession) {
 	httpClient := NewHTTPClient("http://localhost:8000")
 	headers := map[string]string{
 		"Authorization": "Bearer " + session.UserToken,
@@ -147,7 +185,7 @@ func ManageListInfo(bot *tgbotapi.BotAPI, chatID int64, listID string, session *
 	SendYesNoQuestion(bot, chatID, "Change title:", "edit_list_title_yes", "edit_list_title_no")
 }
 
-func HandleManageListInfoMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, session *UserSession) {
+func (l *ListService) HandleManageListInfoMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, session *UserSession) {
 	chatID := GetChatID(update)
 
 	switch session.Status {
@@ -179,6 +217,13 @@ func HandleManageListInfoMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, s
 			return
 		}
 
+		err = l.redis.UpdateListData(fmt.Sprintf("%d", chatID), session.ListData, 900)
+		if err != nil {
+			logrus.Errorf("Failed to update list in Redis: %v", err)
+			SendMessage(bot, chatID, "List updated on server, but failed to sync with Redis.")
+			return
+		}
+
 		SendMessage(bot, chatID, "List successfully updated!")
 		session.TaskData = todo.TodoItem{}
 		session.Status = ""
@@ -187,7 +232,7 @@ func HandleManageListInfoMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, s
 	}
 }
 
-func DeleteList(bot *tgbotapi.BotAPI, chatID int64, listID string, session *UserSession) {
+func (l *ListService) DeleteList(bot *tgbotapi.BotAPI, chatID int64, listID string, session *UserSession) {
 	httpClient := NewHTTPClient("http://localhost:8000")
 
 	headers := map[string]string{
@@ -201,18 +246,24 @@ func DeleteList(bot *tgbotapi.BotAPI, chatID int64, listID string, session *User
 		return
 	}
 
-	session.CurrentListID = listID
+	redisKey := strconv.FormatInt(chatID, 10)
+	id, _ := strconv.Atoi(listID)
+	err = l.redis.DeleteListData(redisKey, todo.TodoList{Id: id}, 900)
+	if err != nil {
+		logrus.Warnf("Failed to update Redis cache after deleting list: %v", err)
+	}
+
 	SendMessage(bot, chatID, "List successfully deleted.")
 }
 
-func AddList(bot *tgbotapi.BotAPI, chatID int64, session *UserSession) {
+func (l *ListService) AddList(bot *tgbotapi.BotAPI, chatID int64, session *UserSession) {
 	session.Status = "add_list_title"
 	session.AccountData = []string{}
 
 	SendMessage(bot, chatID, "Enter the title:")
 }
 
-func HandleAddListMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, session *UserSession) {
+func (l *ListService) HandleAddListMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, session *UserSession) {
 	chatID := GetChatID(update)
 	text := update.Message.Text
 
@@ -234,10 +285,34 @@ func HandleAddListMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, session 
 			"Authorization": "Bearer " + session.UserToken,
 		}
 
-		_, statusCode, err := httpClient.POST("/api/lists", headers, list)
+		response, statusCode, err := httpClient.POST("/api/lists", headers, list)
 		if err != nil || statusCode != 200 {
 			logrus.Errorf("Failed to add task: %v", err)
 			SendMessage(bot, chatID, "An error occurred while adding the task. Please try again.")
+			return
+		}
+
+		var responseData map[string]interface{}
+		err = json.Unmarshal(response, &responseData)
+		if err != nil {
+			logrus.Errorf("Failed to parse response: %v", err)
+			SendMessage(bot, chatID, "An error occurred while processing the response. Please try again.")
+			return
+		}
+
+		listID, ok := responseData["id"].(float64)
+		if !ok {
+			logrus.Errorf("Invalid response format: missing 'id'")
+			SendMessage(bot, chatID, "Invalid server response. Please try again.")
+			return
+		}
+
+		list.Id = int(listID)
+
+		err = l.redis.AddListData(fmt.Sprintf("%d", chatID), list, 900)
+		if err != nil {
+			logrus.Errorf("Failed to sync with Redis: %v", err)
+			SendMessage(bot, chatID, "An error occurred while syncing with Redis. Please try again.")
 			return
 		}
 

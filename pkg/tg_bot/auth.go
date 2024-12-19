@@ -8,7 +8,13 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-func Auth(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
+type AuthorizationService struct{}
+
+func NewAuthorizationService() *AuthorizationService {
+	return &AuthorizationService{}
+}
+
+func (a *AuthorizationService) Auth(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	signUpButton := tgbotapi.NewInlineKeyboardButtonData("Sign-Up", "sign_up")
 	signInButton := tgbotapi.NewInlineKeyboardButtonData("Sign-In", "sign_in")
 	keyboard := tgbotapi.NewInlineKeyboardMarkup(
@@ -21,7 +27,7 @@ func Auth(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	bot.Send(msg)
 }
 
-func SignIn(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
+func (a *AuthorizationService) SignIn(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	chatID := update.CallbackQuery.Message.Chat.ID
 
 	session := GetSession(chatID)
@@ -33,7 +39,7 @@ func SignIn(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	SendMessage(bot, chatID, "Enter your username:")
 }
 
-func SignUp(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
+func (a *AuthorizationService) SignUp(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	chatID := update.CallbackQuery.Message.Chat.ID
 
 	session := GetSession(chatID)
@@ -45,15 +51,7 @@ func SignUp(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	SendMessage(bot, chatID, "Create your name:")
 }
 
-func SendMessage(bot *tgbotapi.BotAPI, chatID int64, text string) {
-	msg := tgbotapi.NewMessage(chatID, text)
-	_, err := bot.Send(msg)
-	if err != nil {
-		logrus.Errorf("Failed to send message to %d: %v", chatID, err)
-	}
-}
-
-func HandleSignInMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, session *UserSession) {
+func (a *AuthorizationService) HandleSignInMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, session *UserSession) {
 	chatID := GetChatID(update)
 	text := update.Message.Text
 
@@ -75,12 +73,12 @@ func HandleSignInMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, session *
 		if err != nil {
 			logrus.Errorf("Failed to sign in: %v", err)
 			SendMessage(bot, chatID, "Wrong username or password. Try again.")
-			Auth(bot, update)
+			a.Auth(bot, update)
 			return
 		} else if statusCode != 200 {
 			logrus.Errorf("Failed to sign in: %v", string(response))
 			SendMessage(bot, chatID, "Wrong username or password. Try again.")
-			Auth(bot, update)
+			a.Auth(bot, update)
 			return
 		}
 
@@ -112,7 +110,7 @@ func HandleSignInMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, session *
 	}
 }
 
-func HandleSignUpMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, session *UserSession) {
+func (a *AuthorizationService) HandleSignUpMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, session *UserSession) {
 	chatID := GetChatID(update)
 	text := update.Message.Text
 
@@ -139,12 +137,12 @@ func HandleSignUpMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, session *
 		if err != nil {
 			logrus.Errorf("Failed to sign up: %v", err)
 			SendMessage(bot, chatID, "This username is already taken. Try again.")
-			Auth(bot, update)
+			a.Auth(bot, update)
 			return
 		} else if statusCode != 200 {
 			logrus.Errorf("Failed to sign up: %v", string(response))
 			SendMessage(bot, chatID, "Unknown error. Try again.")
-			Auth(bot, update)
+			a.Auth(bot, update)
 			return
 		}
 
@@ -169,5 +167,13 @@ func HandleSignUpMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, session *
 		SendMessage(bot, chatID, "Use these commands:\n /account - to manage your account\n /lists - to manage your todo-lists and tasks")
 	default:
 		SendMessage(bot, chatID, "Error. Try again by clicking on Sign-In.")
+	}
+}
+
+func SendMessage(bot *tgbotapi.BotAPI, chatID int64, text string) {
+	msg := tgbotapi.NewMessage(chatID, text)
+	_, err := bot.Send(msg)
+	if err != nil {
+		logrus.Errorf("Failed to send message to %d: %v", chatID, err)
 	}
 }

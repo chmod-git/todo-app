@@ -7,12 +7,20 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-func Account(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
+type AccountService struct {
+	auth *AuthorizationService
+}
+
+func NewAccountService(auth *AuthorizationService) *AccountService {
+	return &AccountService{auth: auth}
+}
+
+func (a *AccountService) ManageAccount(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	chatID := update.Message.Chat.ID
 	session := GetSession(chatID)
 
 	if session.UserToken == "" {
-		Auth(bot, update)
+		a.auth.Auth(bot, update)
 		return
 	}
 
@@ -34,7 +42,7 @@ func Account(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	bot.Send(msg)
 }
 
-func EditAcc(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
+func (a *AccountService) EditAcc(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	chatID := update.CallbackQuery.Message.Chat.ID
 	session := GetSession(chatID)
 
@@ -44,12 +52,12 @@ func EditAcc(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	SendYesNoQuestion(bot, chatID, "Change your name:", "edit_name_yes", "edit_name_no")
 }
 
-func DeleteAcc(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
+func (a *AccountService) DeleteAcc(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	chatID := update.CallbackQuery.Message.Chat.ID
 	SendYesNoQuestion(bot, chatID, "Are you sure you want to delete your account?", "delete_acc_yes", "delete_acc_no")
 }
 
-func LogOut(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
+func (a *AccountService) LogOut(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	chatID := update.CallbackQuery.Message.Chat.ID
 	session := GetSession(chatID)
 
@@ -61,19 +69,7 @@ func LogOut(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	SendMessage(bot, chatID, "You have been logged out.")
 }
 
-func SendYesNoQuestion(bot *tgbotapi.BotAPI, chatID int64, question, yesCallback, noCallback string) {
-	yesButton := tgbotapi.NewInlineKeyboardButtonData("Yes", yesCallback)
-	noButton := tgbotapi.NewInlineKeyboardButtonData("No", noCallback)
-	keyboard := tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(yesButton, noButton),
-	)
-
-	msg := tgbotapi.NewMessage(chatID, question)
-	msg.ReplyMarkup = keyboard
-	bot.Send(msg)
-}
-
-func HandleEditAccountMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, session *UserSession) {
+func (a *AccountService) HandleEditAccountMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, session *UserSession) {
 	chatID := GetChatID(update)
 	text := update.Message.Text
 
@@ -121,4 +117,16 @@ func HandleEditAccountMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, sess
 	default:
 		SendMessage(bot, chatID, "Unknown operation.")
 	}
+}
+
+func SendYesNoQuestion(bot *tgbotapi.BotAPI, chatID int64, question, yesCallback, noCallback string) {
+	yesButton := tgbotapi.NewInlineKeyboardButtonData("Yes", yesCallback)
+	noButton := tgbotapi.NewInlineKeyboardButtonData("No", noCallback)
+	keyboard := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(yesButton, noButton),
+	)
+
+	msg := tgbotapi.NewMessage(chatID, question)
+	msg.ReplyMarkup = keyboard
+	bot.Send(msg)
 }

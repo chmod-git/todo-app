@@ -63,8 +63,45 @@ func (r *AuthSQL) UpdateUser(userId int, user todo.User) error {
 }
 
 func (r *AuthSQL) DeleteUser(userId int) error {
-	query := fmt.Sprintf("DELETE FROM %s WHERE id = $1", usersTable)
-	_, err := r.db.Exec(query, userId)
+	tx, err := r.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to start transaction: %v", err)
+	}
+
+	defer func() {
+		if p := recover(); p != nil {
+			tx.Rollback()
+			panic(p)
+		} else if err != nil {
+			tx.Rollback()
+		} else {
+			err = tx.Commit()
+		}
+	}()
+
+	deleteTodoItemsQuery := `
+		DELETE FROM todo_item 
+		WHERE list_id IN (
+			SELECT id FROM todo_list WHERE user_id = $1
+		)
+	`
+	_, err = tx.Exec(deleteTodoItemsQuery, userId)
+	if err != nil {
+		return fmt.Errorf("failed to delete todo items: %v", err)
+	}
+
+	deleteTodoListsQuery := `
+		DELETE FROM todo_list WHERE user_id = $1
+	`
+	_, err = tx.Exec(deleteTodoListsQuery, userId)
+	if err != nil {
+		return fmt.Errorf("failed to delete todo lists: %v", err)
+	}
+
+	deleteUserQuery := `
+		DELETE FROM users WHERE id = $1
+	`
+	_, err = tx.Exec(deleteUserQuery, userId)
 	if err != nil {
 		return fmt.Errorf("failed to delete user: %v", err)
 	}

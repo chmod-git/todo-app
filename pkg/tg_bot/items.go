@@ -5,12 +5,25 @@ import (
 	"fmt"
 	"github.com/chmod-git/todo-app"
 	"github.com/chmod-git/todo-app/pkg/handler"
+	"github.com/chmod-git/todo-app/pkg/repository"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/sirupsen/logrus"
 	"strconv"
 )
 
-func EditListTasks(bot *tgbotapi.BotAPI, chatID int64, listId string, session *UserSession) {
+type TaskService struct {
+	auth  *AuthorizationService
+	redis *repository.RedisRepository
+}
+
+func NewTaskService(auth *AuthorizationService, redis *repository.RedisRepository) *TaskService {
+	return &TaskService{
+		auth:  auth,
+		redis: redis,
+	}
+}
+
+func (t *TaskService) EditListTasks(bot *tgbotapi.BotAPI, chatID int64, listId string, session *UserSession) {
 	httpClient := NewHTTPClient("http://localhost:8000")
 
 	headers := map[string]string{
@@ -31,7 +44,7 @@ func EditListTasks(bot *tgbotapi.BotAPI, chatID int64, listId string, session *U
 		SendMessage(bot, chatID, "An error occurred while processing tasks.")
 		return
 	}
-	items := getAllItemsResponse.Data
+	items := getAllItemsResponse.Data // TODO
 
 	response, statusCode, err = httpClient.GET(fmt.Sprintf("/api/lists/%s", listId), headers)
 	if err != nil || statusCode != 200 {
@@ -76,7 +89,7 @@ func EditListTasks(bot *tgbotapi.BotAPI, chatID int64, listId string, session *U
 	}
 }
 
-func PromptTaskSelection(bot *tgbotapi.BotAPI, chatID int64, session *UserSession, action string) {
+func (t *TaskService) PromptTaskSelection(bot *tgbotapi.BotAPI, chatID int64, session *UserSession, action string) {
 	if action == "update_task" {
 		action = "processing_updating_task"
 	} else if action == "delete_task" {
@@ -123,27 +136,27 @@ func PromptTaskSelection(bot *tgbotapi.BotAPI, chatID int64, session *UserSessio
 	_, err = bot.Send(msg)
 }
 
-func HandleTaskAction(bot *tgbotapi.BotAPI, chatID int64, session *UserSession, action, taskID string) {
+func (t *TaskService) HandleTaskAction(bot *tgbotapi.BotAPI, chatID int64, session *UserSession, action, taskID string) {
 	switch action {
 	case "add_task":
-		AddTask(bot, chatID, session)
+		t.AddTask(bot, chatID, session)
 	case "update_task":
-		PromptTaskSelection(bot, chatID, session, action)
+		t.PromptTaskSelection(bot, chatID, session, action)
 	case "delete_task":
-		PromptTaskSelection(bot, chatID, session, action)
+		t.PromptTaskSelection(bot, chatID, session, action)
 	default:
 		SendMessage(bot, chatID, "Unknown task action.")
 	}
 }
 
-func AddTask(bot *tgbotapi.BotAPI, chatID int64, session *UserSession) {
+func (t *TaskService) AddTask(bot *tgbotapi.BotAPI, chatID int64, session *UserSession) {
 	session.Status = "add_task_title"
 	session.AccountData = []string{}
 
 	SendMessage(bot, chatID, "Enter the title:")
 }
 
-func HandleAddTaskMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, session *UserSession) {
+func (t *TaskService) HandleAddTaskMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, session *UserSession) {
 	chatID := GetChatID(update)
 	text := update.Message.Text
 
@@ -192,7 +205,7 @@ func HandleAddTaskMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, session 
 	}
 }
 
-func UpdateTask(bot *tgbotapi.BotAPI, chatID int64, taskID string, session *UserSession) {
+func (t *TaskService) UpdateTask(bot *tgbotapi.BotAPI, chatID int64, taskID string, session *UserSession) {
 	session.Status = "update_task_title"
 
 	httpClient := NewHTTPClient("http://localhost:8000")
@@ -216,7 +229,7 @@ func UpdateTask(bot *tgbotapi.BotAPI, chatID int64, taskID string, session *User
 	SendYesNoQuestion(bot, chatID, "Change title:", "edit_task_title_yes", "edit_task_title_no")
 }
 
-func HandleUpdateTaskMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, session *UserSession) {
+func (t *TaskService) HandleUpdateTaskMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, session *UserSession) {
 	chatID := GetChatID(update)
 
 	switch session.Status {
@@ -259,7 +272,7 @@ func HandleUpdateTaskMessage(bot *tgbotapi.BotAPI, update tgbotapi.Update, sessi
 	}
 }
 
-func DeleteTask(bot *tgbotapi.BotAPI, chatID int64, taskID string, session *UserSession) {
+func (t *TaskService) DeleteTask(bot *tgbotapi.BotAPI, chatID int64, taskID string, session *UserSession) {
 	httpClient := NewHTTPClient("http://localhost:8000")
 
 	headers := map[string]string{

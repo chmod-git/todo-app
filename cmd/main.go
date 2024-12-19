@@ -53,7 +53,18 @@ func main() {
 
 	logrus.Print("Todo-App Started")
 
-	go tg_bot.LaunchBot()
+	auth := tg_bot.NewAuthorizationService()
+	redis := repository.NewRedisRepository(
+		viper.GetInt("redis.databases.lists"),
+		viper.GetInt("redis.databases.items"),
+		viper.GetString("redis.host"),
+		viper.GetString("redis.port"),
+		os.Getenv("DB_PASSWORD"),
+	)
+
+	bot := tg_bot.NewTelegramBotService(tg_bot.NewAccountService(auth), tg_bot.NewAuthorizationService(), tg_bot.NewListService(auth, redis), tg_bot.NewTaskService(auth, redis))
+
+	go bot.LaunchBot()
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt, os.Kill)
