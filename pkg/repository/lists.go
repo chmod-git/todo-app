@@ -58,8 +58,37 @@ func (s *ListSQL) Update(userId, listId int, input todo.UpdateListInput) error {
 }
 
 func (s *ListSQL) Delete(userId, listId int) error {
-	query := fmt.Sprintf("DELETE FROM %s tl WHERE tl.user_id = $1 AND tl.id = $2", todoListTable)
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to start transaction: %v", err)
+	}
 
-	_, err := s.db.Exec(query, userId, listId)
-	return err
+	defer func() {
+		if p := recover(); p != nil {
+			tx.Rollback()
+			panic(p)
+		} else if err != nil {
+			tx.Rollback()
+		} else {
+			err = tx.Commit()
+		}
+	}()
+
+	deleteItemsQuery := `
+		DELETE FROM todo_item WHERE list_id = $1
+	`
+	_, err = tx.Exec(deleteItemsQuery, listId)
+	if err != nil {
+		return fmt.Errorf("failed to delete todo items: %v", err)
+	}
+
+	deleteListQuery := `
+		DELETE FROM todo_list WHERE user_id = $1 AND id = $2
+	`
+	_, err = tx.Exec(deleteListQuery, userId, listId)
+	if err != nil {
+		return fmt.Errorf("failed to delete todo list: %v", err)
+	}
+
+	return nil
 }
