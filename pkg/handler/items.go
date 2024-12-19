@@ -128,7 +128,7 @@ func (h *Handler) updateItemById(c *gin.Context) {
 	c.JSON(http.StatusOK, StatusResponse{"ok"})
 }
 
-func (h *Handler) deleteItemById(c *gin.Context) {
+func (h *Handler) DeleteItemById(c *gin.Context) {
 	userId, err := getUserId(c)
 	if err != nil {
 		newErrorResponse(c, http.StatusBadRequest, err.Error())

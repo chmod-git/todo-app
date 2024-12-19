@@ -10,8 +10,8 @@ import (
 )
 
 type RedisRepository struct {
-	listClient *redis.Client
-	itemClient *redis.Client
+	ListClient *redis.Client
+	ItemClient *redis.Client
 }
 
 func NewRedisRepository(listDB, itemDB int, host, port, password string) *RedisRepository {
@@ -36,8 +36,8 @@ func NewRedisRepository(listDB, itemDB int, host, port, password string) *RedisR
 	}
 
 	return &RedisRepository{
-		listClient: listClient,
-		itemClient: itemClient,
+		ListClient: listClient,
+		ItemClient: itemClient,
 	}
 }
 
@@ -49,7 +49,7 @@ func (r *RedisRepository) SaveListsData(chatID string, data []todo.TodoList, ttl
 		return fmt.Errorf("failed to marshal list data: %v", err)
 	}
 
-	err = r.listClient.Set(ctx, "chat:"+chatID, jsonData, time.Duration(ttlSeconds)*time.Second).Err()
+	err = r.ListClient.Set(ctx, "chat:"+chatID, jsonData, time.Duration(ttlSeconds)*time.Second).Err()
 	if err != nil {
 		return fmt.Errorf("failed to save list data to Redis: %v", err)
 	}
@@ -58,7 +58,7 @@ func (r *RedisRepository) SaveListsData(chatID string, data []todo.TodoList, ttl
 }
 
 func (r *RedisRepository) GetListsData(chatID string) ([]todo.TodoList, error) {
-	jsonData, err := r.listClient.Get(ctx, "chat:"+chatID).Result()
+	jsonData, err := r.ListClient.Get(ctx, "chat:"+chatID).Result()
 	if err == redis.Nil {
 		return nil, fmt.Errorf("no data found for chat ID: %s", chatID)
 	} else if err != nil {
@@ -99,7 +99,7 @@ func (r *RedisRepository) UpdateListData(chatID string, updatedList todo.TodoLis
 		return fmt.Errorf("failed to marshal updated list data: %v", err)
 	}
 
-	err = r.listClient.Set(ctx, "chat:"+chatID, jsonData, time.Duration(ttlSeconds)*time.Second).Err()
+	err = r.ListClient.Set(ctx, "chat:"+chatID, jsonData, time.Duration(ttlSeconds)*time.Second).Err()
 	if err != nil {
 		return fmt.Errorf("failed to save updated list data to Redis: %v", err)
 	}
@@ -126,7 +126,7 @@ func (r *RedisRepository) AddListData(chatID string, newList todo.TodoList, ttlS
 		return fmt.Errorf("failed to marshal new list data: %v", err)
 	}
 
-	err = r.listClient.Set(ctx, "chat:"+chatID, jsonData, time.Duration(ttlSeconds)*time.Second).Err()
+	err = r.ListClient.Set(ctx, "chat:"+chatID, jsonData, time.Duration(ttlSeconds)*time.Second).Err()
 	if err != nil {
 		return fmt.Errorf("failed to save new list data to Redis: %v", err)
 	}
@@ -152,7 +152,7 @@ func (r *RedisRepository) DeleteListData(chatID string, targetList todo.TodoList
 		return fmt.Errorf("failed to marshal updated list data: %v", err)
 	}
 
-	err = r.listClient.Set(ctx, "chat:"+chatID, jsonData, time.Duration(ttlSeconds)*time.Second).Err()
+	err = r.ListClient.Set(ctx, "chat:"+chatID, jsonData, time.Duration(ttlSeconds)*time.Second).Err()
 	if err != nil {
 		return fmt.Errorf("failed to save updated list data to Redis: %v", err)
 	}
@@ -168,7 +168,7 @@ func (r *RedisRepository) SaveItemsData(chatID, listID string, data []todo.TodoI
 		return fmt.Errorf("failed to marshal item data: %v", err)
 	}
 
-	err = r.itemClient.Set(ctx, key, jsonData, time.Duration(ttlSeconds)*time.Second).Err()
+	err = r.ItemClient.Set(ctx, key, jsonData, time.Duration(ttlSeconds)*time.Second).Err()
 	if err != nil {
 		return fmt.Errorf("failed to save item data to Redis: %v", err)
 	}
@@ -179,7 +179,7 @@ func (r *RedisRepository) SaveItemsData(chatID, listID string, data []todo.TodoI
 func (r *RedisRepository) GetItemsData(chatID, listID string) ([]todo.TodoItem, error) {
 	key := fmt.Sprintf("chat:%s:list:%s", chatID, listID)
 
-	jsonData, err := r.itemClient.Get(ctx, key).Result()
+	jsonData, err := r.ItemClient.Get(ctx, key).Result()
 	if err == redis.Nil {
 		return nil, fmt.Errorf("no data found for chat ID: %s and list ID: %s", chatID, listID)
 	} else if err != nil {
@@ -222,7 +222,7 @@ func (r *RedisRepository) UpdateItemData(chatID, listID string, updatedItem todo
 		return fmt.Errorf("failed to marshal updated item data: %v", err)
 	}
 
-	err = r.itemClient.Set(ctx, key, jsonData, time.Duration(ttlSeconds)*time.Second).Err()
+	err = r.ItemClient.Set(ctx, key, jsonData, time.Duration(ttlSeconds)*time.Second).Err()
 	if err != nil {
 		return fmt.Errorf("failed to save updated item data to Redis: %v", err)
 	}
@@ -251,7 +251,7 @@ func (r *RedisRepository) AddItemData(chatID, listID string, newItem todo.TodoIt
 		return fmt.Errorf("failed to marshal new item data: %v", err)
 	}
 
-	err = r.itemClient.Set(ctx, key, jsonData, time.Duration(ttlSeconds)*time.Second).Err()
+	err = r.ItemClient.Set(ctx, key, jsonData, time.Duration(ttlSeconds)*time.Second).Err()
 	if err != nil {
 		return fmt.Errorf("failed to save new item data to Redis: %v", err)
 	}
@@ -279,7 +279,7 @@ func (r *RedisRepository) DeleteItemData(chatID, listID string, targetItem todo.
 		return fmt.Errorf("failed to marshal updated item data: %v", err)
 	}
 
-	err = r.itemClient.Set(ctx, key, jsonData, time.Duration(ttlSeconds)*time.Second).Err()
+	err = r.ItemClient.Set(ctx, key, jsonData, time.Duration(ttlSeconds)*time.Second).Err()
 	if err != nil {
 		return fmt.Errorf("failed to save updated item data to Redis: %v", err)
 	}

@@ -32,11 +32,11 @@ func (s *AuthService) CreateUser(user todo.User) (int, error) {
 		return 0, fmt.Errorf("password cannot be empty")
 	}
 
-	user.Password = generatePasswordHash(user.Password)
+	user.Password = GeneratePasswordHash(user.Password)
 	return s.repo.CreateUser(user)
 }
 
-func generatePasswordHash(password string) string {
+func GeneratePasswordHash(password string) string {
 	hash := sha1.New()
 	hash.Write([]byte(password))
 
@@ -44,7 +44,7 @@ func generatePasswordHash(password string) string {
 }
 
 func (s *AuthService) GenerateToken(username, password string) (string, error) {
-	user, err := s.repo.GetUser(username, generatePasswordHash(password))
+	user, err := s.repo.GetUser(username, GeneratePasswordHash(password))
 	if err != nil {
 		return "", err
 	}
@@ -87,7 +87,7 @@ func (s *AuthService) GetUser(username, password string) (todo.User, error) {
 		return todo.User{}, fmt.Errorf("password cannot be empty")
 	}
 
-	password = generatePasswordHash(password)
+	password = GeneratePasswordHash(password)
 	return s.repo.GetUser(username, password)
 }
 
@@ -98,7 +98,7 @@ func (s *AuthService) UpdateUser(userId int, user todo.User) error {
 		return fmt.Errorf("password cannot be empty")
 	}
 
-	user.Password = generatePasswordHash(user.Password)
+	user.Password = GeneratePasswordHash(user.Password)
 	return s.repo.UpdateUser(userId, user)
 }
 
