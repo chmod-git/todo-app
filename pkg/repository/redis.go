@@ -108,10 +108,10 @@ func (r *RedisRepository) UpdateListData(chatID string, updatedList todo.TodoLis
 }
 
 func (r *RedisRepository) AddListData(chatID string, newList todo.TodoList, ttlSeconds int) error {
-	data, err := r.GetListsData(chatID)
-	if err != nil {
-		return fmt.Errorf("failed to get list data for addition: %v", err)
-	}
+	data, _ := r.GetListsData(chatID)
+	//if err != nil {
+	//	return fmt.Errorf("failed to get list data for addition: %v", err)
+	//}
 
 	for _, list := range data {
 		if list.Id == newList.Id {
