@@ -151,7 +151,6 @@ func (t *TelegramBotService) HandleCallback(bot *tgbotapi.BotAPI, update tgbotap
 		session.Status = ""
 
 		httpClient := NewHTTPClient("http://localhost:8000")
-
 		headers := map[string]string{
 			"Authorization": "Bearer " + session.UserToken,
 		}
