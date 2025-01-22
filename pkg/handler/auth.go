@@ -10,7 +10,7 @@ func (h *Handler) SignUp(c *gin.Context) {
 	var input todo.User
 
 	if err := c.BindJSON(&input); err != nil {
-		newErrorResponse(c, http.StatusBadRequest, err.Error())
+		newErrorResponse(c, http.StatusBadRequest, "invalid input body")
 		return
 	}
 
@@ -69,13 +69,13 @@ func (h *Handler) getUser(c *gin.Context) {
 func (h *Handler) updateUser(c *gin.Context) {
 	userId, err := getUserId(c)
 	if err != nil {
-		newErrorResponse(c, http.StatusBadRequest, err.Error())
+		newErrorResponse(c, http.StatusBadRequest, "wrong token")
 		return
 	}
 
 	var input todo.User
 	if err := c.BindJSON(&input); err != nil {
-		newErrorResponse(c, http.StatusBadRequest, err.Error())
+		newErrorResponse(c, http.StatusBadRequest, "invalid user input")
 		return
 	}
 
